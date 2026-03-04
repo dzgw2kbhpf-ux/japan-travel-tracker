@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Japan Smart Map</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet"/>
+<script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
+
+<style>
+body { margin:0; font-family:-apple-system,BlinkMacSystemFont; }
+#map { position:absolute; top:0; bottom:0; width:100%; }
+
+#panel {
+ position:absolute;
+ bottom:0;
+ left:0;
+ right:0;
+ background:white;
+ border-top-left-radius:20px;
+ border-top-right-radius:20px;
+ padding:15px;
+ box-shadow:0 -4px 15px rgba(0,0,0,0.2);
+}
+
+.row { display:flex; justify-content:space-between; margin-bottom:10px; }
+
+button {
+ padding:10px 15px;
+ border-radius:10px;
+ border:none;
+ font-size:14px;
+ background:#007aff;
+ color:white;
+}
+button.secondary { background:#e5e5ea; color:black; }
+
+#compass {
+ position:absolute;
+ top:20px;
+ right:20px;
+ width:50px;
+ height:50px;
+ background:white;
+ border-radius:50%;
+ display:flex;
+ justify-content:center;
+ align-items:center;
+ box-shadow:0 2px 8px rgba(0,0,0,0.3);
+}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="compass">🧭</div>
+
+<div id="panel">
+ <div class="row">
+   <div>距離: <span id="distance">0.00</span> km</div>
+   <button id="followBtn" class="secondary">追尾 ON</button>
+ </div>
+ <div class="row">
+   <button onclick="setMode('driving-car')">🚗 車</button>
+   <button onclick="setMode('foot-walking')">🚶 徒歩</button>
+   <button onclick="setMode('cycling-regular')">🚴 自転車</button>
+ </div>
+</div>
+
+<script>
+
+const MAP_KEY = "wO0gwijlnnokzw81V8q6";
+const ORS_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjcyMmI1NmRjYTE3NjQwNzA4OTc1MTczN2NmM2I1MTkxIiwiaCI6Im11cm11cjY0In0=";
+
+let followMode = true;
+let userLocation = null;
+let mode = "driving-car";
+
+const map = new maplibregl.Map({
+ container:'map',
+ style:`https://api.maptiler.com/maps/streets/style.json?key=${MAP_KEY}`,
+ center:[139.767,35.681],
+ zoom:14
+});
+
+map.dragRotate.disable();
+map.touchZoomRotate.disableRotation();
+
+let marker;
+
+navigator.geolocation.watchPosition(pos=>{
+ userLocation=[pos.coords.longitude,pos.coords.latitude];
+
+ if(!marker){
+   marker=new maplibregl.Marker().setLngLat(userLocation).addTo(map);
+ }else{
+   marker.setLngLat(userLocation);
+ }
+
+ if(followMode){
+   map.easeTo({center:userLocation,zoom:15});
+ }
+
+ loadShops();
+
+},{enableHighAccuracy:true});
+
+function setMode(m){ mode=m; }
+
+document.getElementById("followBtn").onclick=function(){
+ followMode=!followMode;
+ this.innerText=followMode?"追尾 ON":"追尾 OFF";
+};
+
+function loadShops(){
+ if(!userLocation) return;
+
+ fetch(`https://overpass-api.de/api/interpreter?data=[out:json];node(around:1000,${userLocation[1]},${userLocation[0]})[shop];out;`)
+ .then(r=>r.json())
+ .then(data=>{
+   data.elements.forEach(el=>{
+     new maplibregl.Marker({color:"green"})
+      .setLngLat([el.lon,el.lat])
+      .setPopup(new maplibregl.Popup().setHTML(`<b>${el.tags.name||"店舗"}</b><br><button onclick="routeTo(${el.lon},${el.lat})">ここへ行く</button>`))
+      .addTo(map);
+   });
+ });
+}
+
+function routeTo(lon,lat){
+ fetch(`https://api.openrouteservice.org/v2/directions/${mode}?api_key=${ORS_KEY}&start=${userLocation[0]},${userLocation[1]}&end=${lon},${lat}`)
+ .then(r=>r.json())
+ .then(data=>{
+   const coords=data.features[0].geometry.coordinates;
+   const dist=(data.features[0].properties.summary.distance/1000).toFixed(2);
+   const time=(data.features[0].properties.summary.duration/60).toFixed(0);
+
+   document.getElementById("distance").innerText=dist;
+
+   map.addSource("route",{type:"geojson",data:{
+     type:"Feature",
+     geometry:{type:"LineString",coordinates:coords}
+   }});
+   map.addLayer({
+     id:"route",
+     type:"line",
+     source:"route",
+     paint:{ "line-color":"#007aff","line-width":5 }
+   });
+
+   alert(`到着時間 約${time}分`);
+ });
+}
+
+window.addEventListener("deviceorientation",e=>{
+ if(e.alpha){
+   document.getElementById("compass").style.transform=`rotate(${-e.alpha}deg)`;
+ }
+});
+
+</script>
+</body>
+</html>
