@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Japan Travel Tracker PRO</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet"/>
+<script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
+
+<style>
+body { margin:0; padding:0; }
+#map { position:absolute; top:0; bottom:0; width:100%; }
+
+#btn {
+ position:absolute;
+ top:20px;
+ left:50%;
+ transform:translateX(-50%);
+ z-index:10;
+ padding:15px 30px;
+ font-size:18px;
+ background:#007bff;
+ color:white;
+ border:none;
+ border-radius:10px;
+}
+</style>
+</head>
+
+<body>
+
+<button id="btn">位置情報開始</button>
+<div id="map"></div>
+
+<script>
+
+// リアル地図スタイル
+const map = new maplibregl.Map({
+ container:'map',
+ style:{
+   version:8,
+   sources:{
+     osm:{
+       type:"raster",
+       tiles:[
+         "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+         "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
+         "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png"
+       ],
+       tileSize:256
+     }
+   },
+   layers:[
+     {
+       id:"osm-layer",
+       type:"raster",
+       source:"osm"
+     }
+   ]
+ },
+ center:[139.767,35.681],
+ zoom:5,
+ pitch:0,
+ bearing:0
+});
+
+map.dragRotate.disable();
+map.touchZoomRotate.disableRotation();
+
+let marker;
+let path = [];
+let watchId;
+
+// 線レイヤー準備
+map.on("load",function(){
+ map.addSource("route",{
+   type:"geojson",
+   data:{
+     type:"Feature",
+     geometry:{
+       type:"LineString",
+       coordinates:[]
+     }
+   }
+ });
+
+ map.addLayer({
+   id:"route-line",
+   type:"line",
+   source:"route",
+   paint:{
+     "line-color":"#ff0000",
+     "line-width":4
+   }
+ });
+});
+
+document.getElementById("btn").addEventListener("click",function(){
+
+ if(watchId){
+   return; // 二重起動防止
+ }
+
+ watchId = navigator.geolocation.watchPosition(function(pos){
+
+   const lng = pos.coords.longitude;
+   const lat = pos.coords.latitude;
+
+   map.flyTo({
+     center:[lng,lat],
+     zoom:16,
+     speed:1
+   });
+
+   // マーカー更新
+   if(marker){ marker.remove(); }
+   marker = new maplibregl.Marker()
+     .setLngLat([lng,lat])
+     .addTo(map);
+
+   // 移動記録追加
+   path.push([lng,lat]);
+
+   map.getSource("route").setData({
+     type:"Feature",
+     geometry:{
+       type:"LineString",
+       coordinates:path
+     }
+   });
+
+ },function(err){
+   alert("取得失敗: "+err.message);
+ },{
+   enableHighAccuracy:true,
+   maximumAge:0,
+   timeout:10000
+ });
+
+});
+
+</script>
+
+</body>
+</html>
