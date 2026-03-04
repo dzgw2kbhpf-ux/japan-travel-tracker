@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Free 3D Earth Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
+<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+
+<style>
+body { margin:0; padding:0; }
+#map { position:absolute; top:0; bottom:0; width:100%; }
+
+#ui {
+ position:absolute;
+ top:10px;
+ left:10px;
+ background:rgba(255,255,255,0.95);
+ padding:12px;
+ border-radius:12px;
+ z-index:10;
+ width:220px;
+ font-family:sans-serif;
+}
+
+button {
+ width:100%;
+ padding:10px;
+ margin-bottom:8px;
+ font-size:14px;
+}
+</style>
+</head>
+<body>
+
+<div id="ui">
+<button onclick="startTracking()">位置情報開始</button>
+<button onclick="toggleFollow()">追尾ON</button>
+<div>距離: <span id="distance">0</span> km</div>
+</div>
+
+<div id="map"></div>
+
+<script>
+
+// 高画質衛星（無料）
+const map = new maplibregl.Map({
+ container: 'map',
+ style: {
+   version: 8,
+   sources: {
+     'satellite': {
+       type: 'raster',
+       tiles: [
+         'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+       ],
+       tileSize: 256,
+       maxzoom: 22
+     }
+   },
+   layers: [{
+     id: 'satellite-layer',
+     type: 'raster',
+     source: 'satellite'
+   }]
+ },
+ center: [139.7671,35.6812],
+ zoom: 18,
+ pitch: 60,
+ bearing: 0,
+ maxZoom:22
+});
+
+map.addControl(new maplibregl.NavigationControl());
+
+let followMode = true;
+let totalDistance = 0;
+let lastPos = null;
+
+// 白矢印マーカー
+const arrow = document.createElement("div");
+arrow.style.width = "40px";
+arrow.style.height = "40px";
+arrow.style.background = "white";
+arrow.style.clipPath = "polygon(50% 0%, 100% 100%, 50% 80%, 0% 100%)";
+arrow.style.border = "2px solid black";
+
+const marker = new maplibregl.Marker({ element: arrow })
+ .setLngLat([139.7671,35.6812])
+ .addTo(map);
+
+function startTracking(){
+
+ navigator.geolocation.watchPosition(function(pos){
+
+   const lng = pos.coords.longitude;
+   const lat = pos.coords.latitude;
+   const heading = pos.coords.heading || 0;
+
+   const current = [lng,lat];
+
+   if(lastPos){
+     const dist = getDistance(
+       lastPos[1],lastPos[0],
+       lat,lng
+     );
+     totalDistance += dist;
+     document.getElementById("distance").innerText =
+       (totalDistance/1000).toFixed(4);
+   }
+
+   lastPos = current;
+
+   marker.setLngLat(current);
+
+   arrow.style.transform =
+     `rotate(${heading}deg)`;
+
+   if(followMode){
+     map.easeTo({
+       center:current,
+       bearing:heading,
+       pitch:60,
+       duration:100
+     });
+   }
+
+ },{
+   enableHighAccuracy:true,
+   maximumAge:0
+ });
+
+}
+
+function toggleFollow(){
+ followMode = !followMode;
+ document.querySelectorAll("button")[1].innerText =
+   followMode ? "追尾ON" : "追尾OFF";
+}
+
+// 距離計算
+function getDistance(lat1, lon1, lat2, lon2){
+ const R = 6371000;
+ const dLat = (lat2-lat1)*Math.PI/180;
+ const dLon = (lon2-lon1)*Math.PI/180;
+ const a =
+   Math.sin(dLat/2)**2 +
+   Math.cos(lat1*Math.PI/180) *
+   Math.cos(lat2*Math.PI/180) *
+   Math.sin(dLon/2)**2;
+ return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+</script>
+
+</body>
+</html>
